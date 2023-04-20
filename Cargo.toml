@@ -9,3 +9,4 @@ edition = "2021"
 anyhow = { version = "1.0" }
 clap = { features = ["derive"], version = "4.2" }
 pcap = { version = "1.0" }
+pnet = { version = "0.33" }
