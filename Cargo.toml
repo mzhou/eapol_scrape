@@ -8,5 +8,6 @@ edition = "2021"
 [dependencies]
 anyhow = { version = "1.0" }
 clap = { features = ["derive"], version = "4.2" }
+hex = { version = "0.4" }
 pcap = { version = "1.0" }
 pnet = { version = "0.33" }
