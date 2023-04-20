@@ -3,7 +3,7 @@ use std::thread::spawn;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use pcap::Capture;
+use pcap::{Capture, Direction};
 use pnet::datalink::MacAddr;
 use pnet::packet::ethernet::{EtherType, Ethernet, EthernetPacket, MutableEthernetPacket};
 use pnet::packet::{FromPacket, Packet};
@@ -39,16 +39,33 @@ fn main() -> Result<()> {
         .context("Capture::open failed for read")?;
 
     capture_read
+        .direction(Direction::In)
+        .context("Capture::direction failed for read")?;
+
+    // filter causes response to be missed
+    /*
+    capture_read
         .filter("ether proto 0x888e", true)
         .context("Capture::filter failed for read")?;
+    */
 
     let (read_tx, read_rx) = channel();
-    let read_thread = spawn(move || -> Result<()> {
-        loop {
-            let packet = capture_read.next_packet().context("next_packet failed")?;
-            read_tx
-                .send(packet.data.to_owned())
-                .context("send failed")?;
+    let read_thread = spawn(move || {
+        if let Err(err) = || -> Result<()> {
+            loop {
+                let packet = capture_read.next_packet().context("next_packet failed")?;
+                let ether_proto = (packet.data[12] as u16) << 8 | (packet.data[13] as u16);
+                //eprintln!("Read thread got packet of type 0x{:x}", ether_proto);
+                if ether_proto != ETHERTYPE_8021X.0 {
+                    continue;
+                }
+                //eprintln!("Read thread got packet");
+                read_tx
+                    .send(packet.data.to_owned())
+                    .context("send failed")?;
+            }
+        }() {
+            eprintln!("Read thread error: {:?}", err);
         }
     });
 
@@ -77,7 +94,7 @@ fn main() -> Result<()> {
             source: args.supplicant,
         };
 
-        println!("S {:?}", start);
+        eprintln!("S {:?}", start);
 
         let start_packet = build_packet(&start).context("build_packet failed for start")?;
         capture_write
@@ -110,7 +127,7 @@ fn main() -> Result<()> {
         source: args.authenticator,
     };
 
-    println!("S {:?}", request_identity);
+    eprintln!("S {:?}", request_identity);
 
     let request_identity_packet =
         build_packet(&request_identity).context("build_packet failed for request_identity")?;
@@ -126,7 +143,7 @@ fn main() -> Result<()> {
         .context("EthernetPacket::new failed for response_identity")?
         .from_packet();
 
-    println!("R {:?}", response_identity);
+    eprintln!("R {:?}", response_identity);
 
     Ok(())
 }
