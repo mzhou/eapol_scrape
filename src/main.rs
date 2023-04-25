@@ -4,7 +4,7 @@ use std::thread::spawn;
 use anyhow::{Context, Result};
 use clap::Parser;
 use hex::encode;
-use pcap::{Capture, Direction};
+use pcap::{Capture, Direction, Error as PcapError};
 use pnet::datalink::MacAddr;
 use pnet::packet::ethernet::{EtherType, Ethernet, EthernetPacket, MutableEthernetPacket};
 use pnet::packet::{FromPacket, Packet};
@@ -114,7 +114,9 @@ fn main() -> Result<()> {
 
     let mut capture_read = Capture::from_device(args.interface.as_str())
         .context("Capture::from_device failed for read")?
+        .immediate_mode(true)
         .promisc(true)
+        .timeout(0)
         .open()
         .context("Capture::open failed for read")?;
 
@@ -122,25 +124,20 @@ fn main() -> Result<()> {
         .direction(Direction::In)
         .context("Capture::direction failed for read")?;
 
-    // filter causes response to be missed
-    /*
     capture_read
         .filter("ether proto 0x888e", true)
         .context("Capture::filter failed for read")?;
-    */
 
     let (read_tx, read_rx) = channel();
     // just let the thread die at the end of main
     let _read_thread = spawn(move || {
         if let Err(err) = || -> Result<()> {
             loop {
-                let packet = capture_read.next_packet().context("next_packet failed")?;
-                let ether_proto = (packet.data[12] as u16) << 8 | (packet.data[13] as u16);
-                //eprintln!("Read thread got packet of type 0x{:x}", ether_proto);
-                if ether_proto != ETHERTYPE_8021X.0 {
+                let packet_result = capture_read.next_packet();
+                if packet_result == Err(PcapError::TimeoutExpired) {
                     continue;
                 }
-                //eprintln!("Read thread got packet");
+                let packet = packet_result.context("next_packet failed")?;
                 read_tx
                     .send(packet.data.to_owned())
                     .context("send failed")?;
